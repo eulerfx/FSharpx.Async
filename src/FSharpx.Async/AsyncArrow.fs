@@ -152,26 +152,26 @@ module AsyncArrow =
 
   /// Creates an arrow which first invokes f then g with the input and output of f. The output of g is discarded.
   /// This is thenDoIn flipped.
-  let doAfterIn (g:AsyncArrow<'a * 'b, _>) (f:AsyncArrow<'a, 'b>) : AsyncArrow<'a, 'b> =
+  let doAfterIn (f:AsyncArrow<'a, 'b>) (g:AsyncArrow<'a * 'b, _>) : AsyncArrow<'a, 'b> =
     fun a -> f a |> Async.bind (fun b -> g (a,b) |> Async.map (fun _ -> b))
 
   /// Runs an arrow after the target arrow passing in the output of target arrow.
   /// This is thenDo flipped.
-  let doAfter (g:AsyncArrow<'b, _>) (f:AsyncArrow<'a, 'b>) : AsyncArrow<'a, 'b> =
+  let doAfter (f:AsyncArrow<'a, 'b>) (g:AsyncArrow<'b, _>)  : AsyncArrow<'a, 'b> =
     fun a -> f a |> Async.bind (fun b -> g b |> Async.map (fun _ -> b))
   
   /// Creates an arrow which first invokes f then g with the results of f. The output value of g is discarded.
   /// This is doAfterIn flipped.
-  let inline thenDoIn (f:AsyncArrow<'a, 'b>) (g:AsyncArrow<'a * 'b, _>) : AsyncArrow<'a, 'b> =
-    doAfterIn g f      
+  let inline thenDoIn (g:AsyncArrow<'a * 'b, _>) (f:AsyncArrow<'a, 'b>)  : AsyncArrow<'a, 'b> =
+    doAfterIn f g    
 
   /// Creates an arrow which first invokes f then g with the results of f. The results (but not side-effects) of g are discarded.
   /// This is doAfter flipped.
-  let inline thenDo (f:AsyncArrow<'a, 'b>) (g:AsyncArrow<'b, _>) : AsyncArrow<'a, 'b> =
-    doAfter g f
+  let inline thenDo (g:AsyncArrow<'b, _>) (f:AsyncArrow<'a, 'b>)  : AsyncArrow<'a, 'b> =
+    doAfter f g
 
   /// Runs an arrow after the target arrow.    
-  let doBefore (g:AsyncArrow<'a, _>) (f:AsyncArrow<'a, 'b>) : AsyncArrow<'a, 'b> =
+  let doBefore (f:AsyncArrow<'a, 'b>) (g:AsyncArrow<'a, _>) : AsyncArrow<'a, 'b> =
     fun a -> g a |> Async.bind (fun _ -> f a)
    
   /// Creates an arrow which operates on arrays of inputs, applying in parallel but preserving input order.
@@ -195,8 +195,8 @@ module AsyncArrow =
     compose (left f) g
 
   /// Invokes the arrow g with the successful result 'b of arrow f. If f returns a failure no action is performed.
-  let afterChoice (g:AsyncArrow<'b, _>) (f:AsyncArrow<'a, Choice<'b, 'e>>) : AsyncArrow<'a, Choice<'b, 'e>> =
-    f |> thenDo <| function
+  let afterSuccessAsync (g:AsyncArrow<'b, _>) (f:AsyncArrow<'a, Choice<'b, 'e>>) : AsyncArrow<'a, Choice<'b, 'e>> =
+    f |> doAfter <| function
       | Choice1Of2 b -> g b
       | Choice2Of2 _ -> Async.unit
 
@@ -227,7 +227,7 @@ module AsyncArrow =
 
   /// Creates an arrow which calls the specified callback function when an error 'e occurs.
   let notifyErrors (cb:'a * 'e -> unit) : AsyncFilter<'a, Choice<'b, 'e>> =
-    doAfterIn <| fun (a,e) -> 
+    thenDoIn <| fun (a,e) -> 
       match e with
       | Choice1Of2 _ -> Async.unit
       | Choice2Of2 e -> cb (a,e) ; Async.unit
