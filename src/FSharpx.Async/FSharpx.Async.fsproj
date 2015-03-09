@@ -72,6 +72,7 @@
     <Compile Include="SlidingWindowAgent.fs" />
     <Compile Include="Observable.fs" />
     <Compile Include="Async.fs" />
+    <Compile Include="Chan.fs" />
     <Compile Include="AsyncArrow.fs" />
     <Compile Include="AsyncOperations.fsi" />
     <Compile Include="AsyncOperations.fs" />
@@ -81,6 +82,7 @@
     <Compile Include="AsyncStreamReader.fs" />
     <Compile Include="AsyncSeq.fs" />
     <Compile Include="AsyncStream.fs" />
+    <Compile Include="AsyncEvent.fs" />
     <Compile Include="Async.IO.fs" />
     <None Include="paket.references" />
     <None Include="paket.template" />
