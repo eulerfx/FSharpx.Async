@@ -93,3 +93,9 @@ module AsyncExtensions =
         a |> Async.bind (function
           | Choice1Of2 a' -> f a' |> Async.map (function Choice1Of2 b -> Choice1Of2 b | Choice2Of2 e2 -> Choice2Of2 (Choice2Of2 e2))
           | Choice2Of2 e1 -> Choice2Of2 (Choice1Of2 e1) |> async.Return)
+
+      /// Creates an async computation which runs the argument computation but times out after a specified period if 
+      /// it doesn't complete.
+      static member timeoutAfter (timeout:TimeSpan) (c:Async<'a>) = async {
+        let! r = Async.StartChild(c, (int)timeout.TotalMilliseconds)
+        return! r }
