@@ -1,20 +1,20 @@
 (**
 
-# F# Async: AsyncArrow
+# F# Async: AsyncFunc
 
-An `AsyncArrow<'a, 'b>` is a function which takes a value of type `'a` as input and returns
-and async computation which produces a value of type `'b`. An async arrow is represented
-as a type alias `type AsyncArrow<'a, 'b> = 'a -> Async<'b>`. An async arrow can represent an 
-async request-reply protocol and therefore operations on arrows are operations on said protocols.
+An `AsyncFunc<'a, 'b>` is a function which takes a value of type `'a` as input and returns
+an async computation which produces a value of type `'b`. An async function is represented
+as a type alias `type AsyncFunc<'a, 'b> = 'a -> Async<'b>`. An async function can represent an 
+async request-reply protocol and therefore operations on async functions are operations on said protocols.
 Many of the operations defined on ordinary functions, such as composition `>>` can also be 
-defined for async arrows by simply lifting them into the `Async` type with operators defined therein.
+defined for async functions by simply lifting them into the `Async` type with operators defined therein.
 
-Async arrows are useful beyond the `Async` type alone when there is a need to consider the input
-which creates the async computation. Arrows also capture common ways of *gluing* together async request-reply
-protocols. Furthermore, mappings between async arrows, called async filters, can also be useful to consider as a 
+Async functions are useful beyond the `Async` type alone when there is a need to consider the input
+which creates the async computation. Async functions also capture common ways of *gluing* together async request-reply
+protocols. Furthermore, mappings between async functions, called async filters, can also be useful to consider as a 
 reified type for implementing service pipelines.
 
-The `AsyncArrow` type is located in the `FSharpx.Async.dll` assembly which can be loaded in F# Interactive as follows:
+The `AsyncFunc` type is located in the `FSharpx.Async.dll` assembly which can be loaded in F# Interactive as follows:
 *)
 
 #r "../../../bin/FSharpx.Async.dll"
@@ -96,11 +96,11 @@ let httpTimer (service:HttpReq -> Async<HttpRes>) (req:HttpReq) =
 
 (**
 The value `httpTimer` is a function which takes an HTTP service and produces another HTTP service which wraps the
-argument service with a timer. If we view the HTTP service as an async arrow `AsyncArrow<HttpReq, HttpRes>`
-then the above value is a mapping between async arrows - an async filter of type `AsyncFilter<HttpReq, HttpRes>`.
+argument service with a timer. If we view the HTTP service as an async function `AsyncFunc<HttpReq, HttpRes>`
+then the above value is a mapping between async functions - an async filter of type `AsyncFilter<HttpReq, HttpRes>`.
 The previous operations which modify HTTP request and response headers can also be abstracted into async filters.
 
-What do we gain by reifying the async arrow and async filter types? Composition of course! We can declare the types and 
+What do we gain by reifying the async function and async filter types? Composition of course! We can declare the types and 
 then see what operations can be defined on them. Once we abstract the above logic into filters we can glue them 
 back together in various ways. Here is one:
 *)
@@ -125,21 +125,21 @@ let compositeFilter : AsyncFilter<HttpReq, HttpRes> =
 
 (**
 We've created a filter pipeline using the operator `AsyncFilter.andThen` which composes two filters into one. Since an async
-filter is just a function between async arrows, we can apply it to the original HTTP service as follows:
+filter is just a function between async functions, we can apply it to the original HTTP service as follows:
 *)
 
-let filteredService : AsyncArrow<HttpReq, HttpRes> =
+let filteredService : AsyncFunc<HttpReq, HttpRes> =
   httpService |> compositeFilter
 
 (**
 Note that the order of composition matters - it determines the order in which the filters in the pipeline are invoked.
 
-The filters defined above leave the type of the async arrows unchanged. In general, since a filter is a mapping between
-arrows, we can define filters which change the input and output types of the corresponding arrows. Suppose that we are 
+The filters defined above leave the type of the async functions unchanged. In general, since a filter is a mapping between
+async functions, we can define filters which change the input and output types of the corresponding async functions. Suppose that we are 
 implementing an HTTP service which exposes an underlying domain model. We would like to use the rich F# type system to
 define our domain and then adapt it to the HTTP protocol. Filters allow us to separate concerns - we can define a filter
-which takes an arrow operating on domain specific input and output types and map it to an arrow based on HTTP types as seen 
-above. To do this we first define encoding functions:
+which takes an async function operating on domain specific input and output types and map it to an async function based on HTTP 
+types as seen above. To do this we first define encoding functions:
 *)
 
 /// A domain-specific input type.
@@ -169,18 +169,18 @@ let encode (o:Output) = async {
 
 (**
 Next we abstract the encoding mechanism into a filter. In this case however, the filter will change the input and output types
-of the corresponding arrows:
+of the corresponding async functions:
 *)
 
 let codecFilter 
-  (dec:HttpRequestMessage -> Async<'i>, 
+  (dec:HttpReq -> Async<'i>, 
    enc:'o -> Async<HttpRes>) : AsyncFilter<'i, 'o, HttpReq, HttpRes> =
-  AsyncArrow.maplAsync dec 
-  |> AsyncFilter.andThen (AsyncArrow.maprAsync enc)
+  AsyncFunc.maplAsync dec 
+  |> AsyncFilter.andThen (AsyncFunc.maprAsync enc)
 
 (**
 The value `codecFilter` is a function which when given decoder and encoder function creates an async filter which takes an
-async arrow based on the encoded types `'i` and `'o` and maps it to an async arrow based on HTTP. This filter can be used as
+async function based on the encoded types `'i` and `'o` and maps it to an async function based on HTTP. This filter can be used as
 follows:
 *)
 
@@ -190,11 +190,11 @@ let myService (i:Input) = async {
   }
 }
 
-let myHttpService : AsyncArrow<HttpReq, HttpRes> = 
+let myHttpService : AsyncFunc<HttpReq, HttpRes> = 
   myService |> codecFilter (decode,encode)
 
 (**
-Arrows and filters allowed us to separate the concerns of HTTP from the concerns of the domain-specific service as well as cross-cutting
+Async functions and filters allowed us to separate the concerns of HTTP from the concerns of the domain-specific service as well as cross-cutting
 concerns such as timing. The `codecFilter` defined above can be made more generic or defined for a specific format such as JSON. This 
 example merely scratches the surface of what can be done with filters and there is a myriad of other filters we can define - authorization, logging, 
 routing, etc.
@@ -205,9 +205,9 @@ routing, etc.
 
 ## Async sinks
 
-A async sink is a specific type of arrow which produces `unit` as output `type AsyncSink<'a> = AsyncArrow<'a, unit>`. This particular 
-type of arrow is interesting because it captures the notion of a side-effect. Since we've specialized the output type of an arrow to `unit` 
-we can define operations on async sinks that can't be defined on arrows in general.
+A async sink is a specific type of async function which produces `unit` as output `type AsyncSink<'a> = AsyncFunc<'a, unit>`. This particular 
+type of async function is interesting because it captures the notion of a side-effect. Since we've specialized the output type of an async function to `unit` 
+we can define operations on async sinks that can't be defined on async functions in general.
 
 The domain-specific service `myService` defined above simply echoes its input. A real world service will usually do much more. A 
 common task in services is to store the results of the operation in a database. We can model a service which stores output in
@@ -235,22 +235,22 @@ database operation fails, publishing an message on a queue can cause inconsisten
 then we can compose them in parallel using `AsyncSink.mergePar`. We can apply this sink to the service defined above as follows:
 *)
 
-let myServiceWithSink : AsyncArrow<Input, Output> =
+let myServiceWithSink : AsyncFunc<Input, Output> =
   myService
-  |> AsyncArrow.thenDo saveThenPublish
+  |> AsyncFunc.thenDo saveThenPublish
 
 
 (**
 
 ## Error handling
 
-F# encourages the representation of errors explictly in the type system rather than using an out of band mechanism such as exceptions.
+F# encourages the representation of errors explicitly in the type system rather than using an out of band mechanism such as exceptions.
 An operation which produces a value of type `'a` but which may fail with error type `'e` can be represented using the choice type as 
 `Choice<'a, 'e>`. The operator `Async.Catch` catches any exception thrown by an async computation and reifies it as a value of type
-`Choice<'a, exn>`. Async arrows can capture common patterns of handling errors and help us compose services which may error.
+`Choice<'a, exn>`. Async functions can capture common patterns of handling errors and help us compose services which may error.
 
 For example, suppose the domain-specific service `myService` define above is extended to support explicit errors. Changing its output type
-to `Choice<Output, exn>` will force us to handle the error explictly. Arrows and filters once again allows us to separate concerns
+to `Choice<Output, exn>` will force us to handle the error explicitly. Async functions and filters once again allows us to separate concerns
 into well defined modules:
 *)
 
@@ -284,12 +284,13 @@ module Choice =
 /// A service which invokes the sink defined above upon success.  
 let myServiceErrSink =
   myServiceErr 
-  |> AsyncArrow.afterSuccessAsync saveThenPublish
+  |> AsyncFunc.afterSuccessAsync saveThenPublish
   
 
 /// An HTTP service which handles errors explicitly.
-let myHttpServiceErr : AsyncArrow<HttpReq, HttpRes> = 
+let myHttpServiceErr : AsyncFunc<HttpReq, HttpRes> = 
   myServiceErrSink |> codecFilter (decode, Choice.fold encode encodeErr)
+
 
 
 (**
@@ -305,26 +306,46 @@ are threaded through but the operation to write to the database and publish on a
 
 ## Caution
 
-It can be easy to get carried away with async arrows and filters. Many of the operations on async arrows simply compose `Async` in 
+It can be easy to get carried away with async functions and filters. Many of the operations on async functions simply compose `Async` in 
 specific ways. As such, it is possible to duplicate a lot of functionality already provided by `Async` itself. It can be tempting
-to define entire libraries in terms of arrows so as to provide a uniform programming model. Its important to remember that arrows
-and filters should serve as the *glue* for composing services, not services in their own right. Before defining a new arrow or filter
+to define entire libraries in terms of async functions so as to provide a uniform programming model. Its important to remember that async functions
+and filters should serve as the *glue* for composing services, not services in their own right. Before defining a new async function or filter
 consider whether it can be implemented with existing operators.
 
 *)
+
 
 (**
 
 ## Relationship to Async
 
-Arrows as defined herein are tightly coupled to the `Async` type. The relationship is deeper still however. The operation `Async.bind`
-defined on `Async` (and likewise for all *monads* ) has type `('a -> Async<'b>) -> (Async<'a> -> Async<'b>)`. Notably it takes an
-async arrow as the first argument and produces a mapping between `Async<'a>` and `Async<'b>`. This differs from arrow composition
-in that the value `Async<'a>` is provided explicitly. If we parametarize `Async<'a>` by a value of type `'x` then we have composition
-of arrows `('a -> Async<'b>) -> ('x - Async<'a>) -> ('x -> Async<'b>)` as captured by `AsyncArrow.compose`. Indeed, this is a slightly
-different take on monads - rather than defining a monad with `return` and `bind` operations we can think of monads as enabling composition
-of arrows much like function composition. To be more precise, arrows of the form `'a -> M<'b>` for some monadic type `M` are known as *Kleisli arrows*.
+If you've used the F# `Async` type then you've already used async functions. In fact, one way to think of the `Async` type is as enabling
+composition of async functions. If you have one function of type `'a -> 'b` and another function of type `'b -> 'c` then you also
+have a function of type `'a -> 'c` which can be *composed* from the first two using the `>>` operator (or `<<`). The implementation of
+this operator is as follows:
+
 *)
+
+let (>>) (f:'a -> 'b) (g:'b -> 'c) : 'a -> 'c =
+  fun a -> 
+    let b = f a // first evaluate f at a
+    g b // then call g with the result
+
+(**
+
+The reason this operator is simple to implement is because the output of function `f` is exactly the input that the second function
+`g` is looking for. With *async* functions the story isn't as simple because the output of the first is wrapped by `Async`. This is 
+where operations defined on `Async` come into play. The particular operation of interest is `async.Bind` defined on the `Async` 
+[workflow builder](https://msdn.microsoft.com/en-us/library/dd233182.aspx) with type `async.Bind(a:Async<'a>, binder:'a -> Async<'b>) : Async<'b>`.
+The `binder` argument is an async function and we can use this operation to implement composition of async functions as follows:
+
+*)
+
+let composeAsync (f:'a -> Async<'b>) (g:'b -> Async<'c>) : 'a -> Async<'c> =
+  fun a -> 
+    let b = f a // first evalueate f at a
+    async.Bind(b, g) // then bind the result using async function g
+
 
 
 (**
@@ -333,7 +354,5 @@ of arrows much like function composition. To be more precise, arrows of the form
 
 * [Your Server as a Function](http://monkey.org/~marius/funsrv.pdf)
 * [Generalising Monads to Arrows](http://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf)
-* [Arrow](http://en.wikipedia.org/wiki/Arrow_%28computer_science%29)
-* [Monads, Kleisli Arrows, Comonads and other Rambling Thoughts](http://blog.sigfpe.com/2006/06/monads-kleisli-arrows-comonads-and.html)
 
 *)
