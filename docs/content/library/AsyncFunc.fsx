@@ -101,8 +101,8 @@ type AsyncFilter<'a, 'b, 'c, 'd> = AsyncFunc<'a, 'b> -> AsyncFunc<'c, 'd>
 type AsyncFilter<'a, 'b> = AsyncFilter<'a, 'b, 'a, 'b>
 
 (**
-The operations show above, which modify HTTP request and response headers, 
-can be abstracted into async filters as shown in the following:
+The operations which modify HTTP request and response headers (shown above) can be abstracted into async filters 
+as follows:
 *)
 
 let reqHeaderFilter : AsyncFilter<HttpReq, HttpRes> =
@@ -120,9 +120,8 @@ let resHeaderFilter : AsyncFilter<HttpReq, HttpRes> =
 
 
 (**
-What do we gain by reifying the async function and async filter types? Composition of course! We can declare the types and 
-then see what operations can be defined on them. Once we abstract the above logic into filters we can glue them 
-back together in various ways. Here is one:
+What do we gain by reifying the async function and async filter types? Composition of course! Once we abstract the above 
+logic into filters we can glue the filters back together in various ways. Here is one:
 *)
 
 let compositeFilter : AsyncFilter<HttpReq, HttpRes> =
@@ -142,7 +141,7 @@ let filteredService : AsyncFunc<HttpReq, HttpRes> =
 (**
 Note that the order of composition matters - it determines the order in which the filters in the pipeline are invoked.
 
-The filters defined above leave the type of the async functions unchanged. In general, since a filter is a mapping between
+The filters defined above leave the type of the async functions unchanged. However in general, since a filter is a mapping between
 async functions, we can define filters which change the input and output types of the corresponding async functions. Suppose that we are 
 implementing an HTTP service which exposes an underlying domain model. We would like to use the rich F# type system to
 define our domain and then adapt it to the HTTP protocol. Filters allow us to separate concerns - we can define a filter
@@ -183,7 +182,10 @@ of the corresponding async functions:
 let codecFilter 
   (dec:HttpReq -> Async<'i>, 
    enc:'o -> Async<HttpRes>) : AsyncFilter<'i, 'o, HttpReq, HttpRes> =
-  AsyncFunc.maplAsync dec >> AsyncFunc.maprAsync enc
+  // map over the input with the decoder
+  AsyncFunc.maplAsync dec 
+  // and map over the output with the decoder
+  >> AsyncFunc.maprAsync enc
 
 (**
 The value `codecFilter` is a function which when given decoder and encoder function creates an async filter which takes an
@@ -262,6 +264,7 @@ into well defined modules:
 *)
 
 /// A domain-specific service which may error.
+/// AsyncFunc<Input, Choice<Output, exn>>
 let myServiceErr (i:Input) = async {
   if (i.id = "foo") then 
     return Choice2Of2 (exn("oh no!"))
@@ -273,6 +276,7 @@ let myServiceErr (i:Input) = async {
 }
 
 /// An explicit encoder for errors.
+/// AsyncFunc<exn, HttpRes>
 let encodeErr (ex:exn) = async {
   let res = new HttpRes(HttpStatusCode.BadRequest)
   res.Content <- new StringContent(ex.Message)
@@ -288,8 +292,9 @@ module Choice =
     | Choice2Of2 e -> g e
 
 
-/// A service which invokes the sink defined above upon success.  
-let myServiceErrSink =
+/// A service which invokes the sink defined above upon success;
+/// otherwise propagates the error.
+let myServiceErrSink : AsyncFunc<Input, Choice<Output, exn>> =
   myServiceErr 
   |> AsyncFunc.afterSuccessAsync saveThenPublish
   
