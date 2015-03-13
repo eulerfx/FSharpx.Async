@@ -4,15 +4,10 @@
 
 An `AsyncFunc<'a, 'b>` is a function which takes a value of type `'a` as input and returns
 an async computation which produces a value of type `'b`. An async function is represented
-as a type alias `type AsyncFunc<'a, 'b> = 'a -> Async<'b>`. An async function can represent an 
-async request-reply protocol and therefore operations on async functions are operations on said protocols.
-Many of the operations defined on ordinary functions, such as composition `>>` can also be 
-defined for async functions by simply lifting them into the `Async` type with operators defined therein.
-
-Async functions are useful beyond the `Async` type alone when there is a need to consider the input
-which creates the async computation. Async functions also capture common ways of *gluing* together async request-reply
-protocols. Furthermore, mappings between async functions, called async filters, can also be useful to consider as a 
-reified type for implementing service pipelines.
+as a type alias `type AsyncFunc<'a, 'b> = 'a -> Async<'b>`. Many of the operations defined on 
+ordinary functions, such as function composition `>>`, can also be defined for async functions with 
+the help of the `Async` type. Async functions can be used to represent request-reply interactions allowing 
+these interactions to be composed and transformed in various ways. 
 
 The `AsyncFunc` type is located in the `FSharpx.Async.dll` assembly which can be loaded in F# Interactive as follows:
 *)
@@ -25,7 +20,7 @@ open FSharpx.Control
 (**
 ## Motivation
 
-For example, consider an HTTP request-reply protocol as provided
+For example, consider an HTTP request-reply operation as provided
 by [System.Net.Http.HttpClient](https://msdn.microsoft.com/en-us/library/system.net.http.httpclient%28v=vs.118%29.aspx). 
 The method [HttpClient.SendAsync](https://msdn.microsoft.com/en-us/library/hh138176(v=vs.118).aspx) 
 when adapted to `Async` has type `HttpRequestMessage -> Async<HttpResponseMessage>`. A specific instance
@@ -97,12 +92,17 @@ let httpTimer (service:HttpReq -> Async<HttpRes>) (req:HttpReq) =
 (**
 The value `httpTimer` is a function which takes an HTTP service and produces another HTTP service which wraps the
 argument service with a timer. If we view the HTTP service as an async function `AsyncFunc<HttpReq, HttpRes>`
-then the above value is a mapping between async functions - an async filter of type `AsyncFilter<HttpReq, HttpRes>`.
-The previous operations which modify HTTP request and response headers can also be abstracted into async filters.
+then the above value is a mapping between async functions. We can type alias this mapping between async functions as
+an async filter:
+*)
 
-What do we gain by reifying the async function and async filter types? Composition of course! We can declare the types and 
-then see what operations can be defined on them. Once we abstract the above logic into filters we can glue them 
-back together in various ways. Here is one:
+type AsyncFilter<'a, 'b, 'c, 'd> = AsyncFunc<'a, 'b> -> AsyncFunc<'c, 'd>
+
+type AsyncFilter<'a, 'b> = AsyncFilter<'a, 'b, 'a, 'b>
+
+(**
+The operations show above, which modify HTTP request and response headers, 
+can be abstracted into async filters as shown in the following:
 *)
 
 let reqHeaderFilter : AsyncFilter<HttpReq, HttpRes> =
@@ -118,14 +118,22 @@ let resHeaderFilter : AsyncFilter<HttpReq, HttpRes> =
     return res
   }
 
-let compositeFilter : AsyncFilter<HttpReq, HttpRes> =
-  reqHeaderFilter  
-  |> AsyncFilter.andThen resHeaderFilter
-  |> AsyncFilter.andThen httpTimer
 
 (**
-We've created a filter pipeline using the operator `AsyncFilter.andThen` which composes two filters into one. Since an async
-filter is just a function between async functions, we can apply it to the original HTTP service as follows:
+What do we gain by reifying the async function and async filter types? Composition of course! We can declare the types and 
+then see what operations can be defined on them. Once we abstract the above logic into filters we can glue them 
+back together in various ways. Here is one:
+*)
+
+let compositeFilter : AsyncFilter<HttpReq, HttpRes> =
+  reqHeaderFilter  
+  >> resHeaderFilter
+  >> httpTimer
+
+(**
+We've created a filter pipeline using the function composition operator `>>` which allows us to compose two filters into one. 
+Since an async filter is just a function between async functions, we can apply it to the original HTTP service by simply
+passing it in:
 *)
 
 let filteredService : AsyncFunc<HttpReq, HttpRes> =
@@ -175,8 +183,7 @@ of the corresponding async functions:
 let codecFilter 
   (dec:HttpReq -> Async<'i>, 
    enc:'o -> Async<HttpRes>) : AsyncFilter<'i, 'o, HttpReq, HttpRes> =
-  AsyncFunc.maplAsync dec 
-  |> AsyncFilter.andThen (AsyncFunc.maprAsync enc)
+  AsyncFunc.maplAsync dec >> AsyncFunc.maprAsync enc
 
 (**
 The value `codecFilter` is a function which when given decoder and encoder function creates an async filter which takes an
@@ -306,7 +313,7 @@ are threaded through but the operation to write to the database and publish on a
 
 ## Caution
 
-It can be easy to get carried away with async functions and filters. Many of the operations on async functions simply compose `Async` in 
+It can be easy to get carried away with async functions. Many of the operations on async functions simply compose `Async` in 
 specific ways. As such, it is possible to duplicate a lot of functionality already provided by `Async` itself. It can be tempting
 to define entire libraries in terms of async functions so as to provide a uniform programming model. Its important to remember that async functions
 and filters should serve as the *glue* for composing services, not services in their own right. Before defining a new async function or filter
@@ -343,7 +350,7 @@ The `binder` argument is an async function and we can use this operation to impl
 
 let composeAsync (f:'a -> Async<'b>) (g:'b -> Async<'c>) : 'a -> Async<'c> =
   fun a -> 
-    let b = f a // first evalueate f at a
+    let b = f a // first evaluate f at a
     async.Bind(b, g) // then bind the result using async function g
 
 
@@ -353,6 +360,6 @@ let composeAsync (f:'a -> Async<'b>) (g:'b -> Async<'c>) : 'a -> Async<'c> =
 # Further Reading
 
 * [Your Server as a Function](http://monkey.org/~marius/funsrv.pdf)
-* [Generalising Monads to Arrows](http://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf)
+* [Generalizing Monads to Arrows](http://www.cse.chalmers.se/~rjmh/Papers/arrows.pdf)
 
 *)

@@ -9,13 +9,6 @@ open FSharpx.Control.Utils
 /// </summary>
 type AsyncFunc<'a, 'b> = 'a -> Async<'b>
 
-/// An AsyncFilter is a mapping between async functions allowing for the input and output types to change.
-type AsyncFilter<'a, 'b, 'c, 'd> = AsyncFunc<'a, 'b> -> AsyncFunc<'c, 'd>
-
-/// An AsyncFilter is a mapping between async functions.
-type AsyncFilter<'a, 'b> = AsyncFilter<'a, 'b, 'a, 'b>
-
-
 /// Operations on async functions.
 module AsyncFunc =
 
@@ -226,30 +219,11 @@ module AsyncFunc =
     g >> Async.bindChoice f
 
   /// Creates an async function which calls the specified callback function when an error 'e occurs.
-  let notifyErrors (cb:'a * 'e -> unit) : AsyncFilter<'a, Choice<'b, 'e>> =
+  let notifyErrors (cb:'a * 'e -> unit) : AsyncFunc<'a, Choice<'b, 'e>> -> AsyncFunc<'a, Choice<'b, 'e>> =
     thenDoIn <| fun (a,e) -> 
       match e with
       | Choice1Of2 _ -> Async.unit
       | Choice2Of2 e -> cb (a,e) ; Async.unit
-
-
-
-/// Operations on async filters.
-module AsyncFilter =
-  
-  /// The identity filter.
-  [<GeneralizableValue>]
-  let identity<'a, 'b> : AsyncFilter<'a, 'b, 'a, 'b> = 
-    id
-
-  /// Composes two async function filters such that f is followed by g.
-  let inline compose (g:AsyncFilter<'c, 'd, 'e, 'f>) (f:AsyncFilter<'a, 'b, 'c, 'd>) : AsyncFilter<'a, 'b, 'e, 'f> =
-    fun a -> f a |> g
-  
-  /// Composes two async function filters such that the second argument is followed by the first.
-  /// This is an alias for compose.
-  let andThen = compose
-
 
 
 /// Async sink - a function which takes a value and produces an async computation.
