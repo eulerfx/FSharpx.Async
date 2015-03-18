@@ -82,6 +82,7 @@
     <Compile Include="AsyncSeq.fs" />
     <Compile Include="AsyncStream.fs" />
     <Compile Include="Async.IO.fs" />
+    <Compile Include="AsyncPipe.fs" />
     <None Include="paket.references" />
     <None Include="paket.template" />
   </ItemGroup>
