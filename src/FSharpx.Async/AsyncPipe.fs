@@ -79,6 +79,22 @@ module AsyncPipe =
     | Emit (o,rest) -> return! emit (f o) (mapOut f rest)
     | Await g -> return! await g |> mapOut f }
 
+  /// Concetenates two async pipes.
+  let rec append (p1:AsyncPipe<'i, 'o, unit>) (p2:AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> = async {
+    let! p1 = p1
+    match p1 with
+    | Done _ -> return! p2
+    | Emit (h,t) -> return Emit (h, append t p2)
+    | Await (recv) -> return Await ((fun a -> append (recv a) p2)) }   
+
+  /// Binds two async pipes.
+  let rec bind (f:'o -> AsyncPipe<'i, 'o2, unit>) (p:AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o2, 'a> = async {
+    let! p = p
+    match p with
+    | Done a -> return Done a
+    | Emit (h,t) -> return! append (f h) (bind f t)
+    | Await (recv) -> return Await (recv >> bind f) }
+
   /// Repeats an async pipe indefinitely - when it reaches the end it starts the process over.
   let repeat (p:AsyncPipe<'i, 'o, _>) : AsyncPipe<'i, 'o, unit> =
     let rec loop p' = async {
