@@ -20,7 +20,7 @@ and AsyncPipeStep<'i, 'o, 'a> =
   | Await of ('i option -> AsyncPipe<'i, 'o, 'a>)
 
 
-/// An async pipeline which produces no output at the end.
+/// An async pipeline which awaits inputs of type 'i and emits outputs of type 'o.
 type AsyncPipe<'i, 'o> = AsyncPipe<'i, 'o, unit>
 
 /// Consumes values of type 'i eventually returning value 'a.
@@ -35,6 +35,12 @@ type AsyncOut<'o, 'a> = AsyncPipe<Void, 'o, 'a>
 /// Emits values of type 'a eventually stopping.
 type AsyncOut<'o> = AsyncOut<'o, unit>
 
+/// A source of effectful functions.
+type AsyncChan<'i, 'o> = AsyncOut<'i -> Async<'o>>
+
+/// A source of effectful sink functions.
+///type AsyncSink<'o> = AsyncOut<'o -> Async<unit>>
+
 
 /// Operations on async pipes.
 module AsyncPipe =
@@ -43,24 +49,50 @@ module AsyncPipe =
   let doneWith (a:'a) : AsyncPipe<'i, 'o, 'a> =
     Done a |> async.Return
 
+  /// Creates an async pipe which halts immediately.
+  let inline doneWithUnit<'i, 'o> : AsyncPipe<'i, 'o> =
+    doneWith ()
+
   /// Creates an async pipe which emits a value followed by the specified remainder.
   let emit (o:'o) (rest:AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> = 
     Emit(o, rest) |> async.Return
 
   /// Creates an async pipe which emits a value and then stops immediately with the specified value.
-  let emitDone (o:'o) (a:'a) : AsyncPipe<'i, 'o, 'a> = 
+  let emitDoneWith (o:'o) (a:'a) : AsyncPipe<'i, 'o, 'a> = 
     emit o (doneWith a)
+
+  /// Creates an async pipe which emits a value and then stops immediately.
+  let emitDoneWithUnit (o:'o) : AsyncPipe<'i, 'o> = 
+    emitDoneWith o ()
 
   /// Creates an async pipe which awaits input and continues. An absence of input is indicated by None.
   let await (f:'i option -> AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> =
     Await f |> async.Return
 
+  /// Creates an async pipe which awaits input or returns the argument fallback pipe if the input is exhausted.
+  let awaitOr (fb:AsyncPipe<'i, 'o, 'a>) (f:'i -> AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> =
+    await <| function
+      | Some i -> f i
+      | None -> fb
+
+  /// Creates an async pipe which awaits a single value, returning None if input has been exhausted.
+  let awaitOption<'a> : AsyncPipe<'a, 'a option> =
+    awaitOr (emitDoneWithUnit None) <| fun i -> emitDoneWithUnit (Some i)
+
   /// Creates an async pipe which awaits input.
-  let awaitDoneWith (a:'a) (f:'i -> AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> =
+  let awaitOrDoneWith (a:'a) (f:'i -> AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'i, 'o, 'a> =
     await <| function
       | Some i -> f i
       | None -> doneWith a
 
+  /// Creates an async pipe which awaits input stopping if the input has been exhausted.
+  let awaitOrDoneWithUnit (f:'i -> AsyncPipe<'i, 'o>) : AsyncPipe<'i, 'o> =
+    awaitOrDoneWith () f
+
+  /// Creates an async pipe which awaits a single input, emits and stops.
+  let awaitOne<'a> : AsyncPipe<'a, 'a> =
+    awaitOr doneWithUnit <| fun i -> emitDoneWithUnit i
+        
   /// Maps over the input to an async pipe.        
   let rec mapIn (f:'j -> 'i) (p:AsyncPipe<'i, 'o, 'a>) : AsyncPipe<'j, 'o, 'a> = async {
     let! p = p
@@ -106,11 +138,11 @@ module AsyncPipe =
     loop p
   
   /// Creates an async pipeline which buffers its inputs by count and emits buffers.
-  let bufferByCount (n:int) : AsyncPipe<'a, 'a list, unit> =    
+  let bufferByCount (n:int) : AsyncPipe<'a, 'a list> =
     let rec go acc n =
       match acc,n with
       | [],0 -> doneWith ()
-      | acc,0 -> emitDone (acc |> List.rev) ()
+      | acc,0 -> emitDoneWithUnit (acc |> List.rev)
       | acc,n -> await (function
         | Some a -> go (a::acc) (n - 1)
         | None -> go acc (n - 1)
@@ -155,5 +187,16 @@ module AsyncPipe =
   /// Creates a pipe which repeatedly awaits input, passes it to the provided function and emits its output.
   /// The pipe halts when no input is provided.
   let rec repeatFunc (f:'a -> Async<'b>) : AsyncPipe<'a, 'b> =
-    awaitDoneWith () <| fun a -> 
+    awaitOrDoneWith () <| fun a -> 
       f a |> Async.bind (fun b -> emit b (repeatFunc f))
+
+  /// Feeds an input value into a process.
+  let rec feed (i:'i) (p:AsyncPipe<'i, _, _>) : AsyncPipe<'i, _, _> =
+    p |> Async.bind (function
+      | Done _ as p -> p |> async.Return
+      | Emit (o,tl) -> Emit (o, feed i tl) |> async.Return
+      | Await f -> Some i |> f)
+    
+
+
+  
