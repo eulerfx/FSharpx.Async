@@ -8,6 +8,7 @@ open System
 open System.Threading
 open System.IO
 
+
 // ----------------------------------------------------------------------------
 
 /// An asynchronous sequence represents a delayed computation that can be
@@ -623,6 +624,88 @@ module AsyncSeq =
     | [a;b] -> merge a b
     | hd::tl -> merge hd (mergeAll tl)
     
+  /// Alters the async sequence such that when the resulting sequence is iterated,
+  /// the specified side-effect is invoked at the end.
+  let private afterAsync (f:Async<_>) (s:AsyncSeq<'a>) : AsyncSeq<'a> = asyncSeq {
+    for item in s do
+      yield item
+    let! _ = f 
+    () }
+        
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // AsyncSeq.groupBy
+
+  open System.Collections.Generic
+  open System.Collections.Concurrent
+  open System.Threading.Tasks  
+
+  type private EagerSeq<'a> = TaskCompletionSource<EagerCons<'a>>
+
+  and private EagerCons<'a> = 
+    | EagerCons of 'a * EagerSeq<'a>
+    | EagerNil
+  
+  let rec private ofEager (e:EagerSeq<'a>) : AsyncSeq<'a> = 
+    async.Delay <| fun() ->
+      e.Task
+      |> Async.AwaitTask
+      |> Async.map (function
+        | EagerNil -> Nil
+        | EagerCons(a,tl) -> Cons(a, ofEager tl))
+
+  type private Group<'k, 'a> = { key : 'k ; mutable tail : EagerSeq<'a> }
+  
+  let groupBy (k:'a -> 'k) (f:'k -> Async<unit> -> AsyncSeq<'a> -> Async<'b>) (s:AsyncSeq<'a>) : AsyncSeq<'b> = async {    
+    
+    let groups = new ConcurrentDictionary<'k, Group<'k, 'a>>()
+    
+    let close g =
+      let mutable g' = Unchecked.defaultof<_>
+      if (groups.TryGetValue(g.key, &g') && obj.ReferenceEquals(g, g')) then
+        groups.TryRemove(g.key, &g') |> ignore
+        g.tail.SetResult(EagerNil)
+
+    let raise (e:exn) =
+      groups.Values 
+      |> Seq.iter (fun g -> g.tail.SetException(e))
+
+    let rec go s = asyncSeq {      
+      let! s = s
+      match s with
+      | Nil ->
+        groups.Values |> Seq.iter close
+
+      | Cons(a,tl) ->                        
+        let k = k a
+        let mutable g = Unchecked.defaultof<_>
+        if (groups.TryGetValue(k, &g)) then
+          let i = g.tail
+          let n = TaskCompletionSource<_>()
+          g.tail <- n
+          i.SetResult(EagerCons(a,n))
+        else
+          let i' = TaskCompletionSource<_>()
+          let i = TaskCompletionSource<_>()
+          i.SetResult(EagerCons(a, i'))
+          let g = { key=k ; tail = i' }
+          groups.TryAdd(k, g) |> ignore
+          let close = async { close g }
+          let! ng = f k close (ofEager i)
+          yield ng         
+
+        yield! go tl }
+    
+    return! go s
+  }
+
+  let iterConAsync (f:'a -> Async<unit>) (s:AsyncSeq<'a>) : Async<unit> = async {
+    
+
+
+    }    
+
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 [<AutoOpen>]

@@ -201,6 +201,34 @@ let ``AsyncSeq.merge should be fair``() =
   let expected = [2;1] |> AsyncSeq.ofSeq
   Assert.True(EQ expected actual)
 
+//[<Test>]
+let ``AsyncSeq.groupBy``() =
+  
+  let s = asyncSeq {
+    yield "a1"
+    yield "a2"
+    yield "b1"
+    yield "b2"
+  }
 
+  let s' = 
+    s
+    |> AsyncSeq.groupBy 
+        (fun x -> x.[0]) 
+        (fun _ _ ss -> 
+          ss |> async.Return)
 
+  let s'' =
+    s'
+    |> AsyncSeq.mapAsync (fun ss -> 
+      printfn "folding substream..." 
+      AsyncSeq.toList ss
+    )
+    //|> AsyncSeq.toBlockingSeq
+    //|> List.ofSeq
+    |> AsyncSeq.toList
+    |> Async.RunSynchronously
 
+  let expect = [ ["a1";"a2"] ; ["b1";"b2"] ]
+
+  Assert.True((expect = s''))
