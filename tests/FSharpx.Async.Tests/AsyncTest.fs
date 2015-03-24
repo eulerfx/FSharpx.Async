@@ -43,4 +43,27 @@ let ``Async.ParallelIgnore should cancel upon first cancellation``() =
     |> Async.RunSynchronously
   )
   |> ignore
+
+[<Test>]
+let ``Async.AwaitTask should complete``() =
+  let completed = ref false
+  let faultyTask = Task.Factory.StartNew(fun() -> completed := true)
+  faultyTask |> Async.AwaitTask |> Async.RunSynchronously
+  Assert.IsTrue(!completed)
     
+[<Test>]
+let ``Async.AwaitTask should propagate exceptions``() =   
+  let faultyTask = Task.Factory.StartNew(fun() -> failwith "catch me if you can" ; ())
+  Assert.Throws<AggregateException>(fun() -> 
+    faultyTask |> Async.AwaitTask |> Async.RunSynchronously
+  )
+  |> ignore
+
+[<Test>]
+let ``Async.AwaitTask should propagate cancellations``() =   
+  let tcs = new TaskCompletionSource<unit>()
+  tcs.SetCanceled()
+  Assert.Throws<OperationCanceledException>(fun() -> 
+    tcs.Task :> Task |> Async.AwaitTask |> Async.RunSynchronously
+  )
+  |> ignore

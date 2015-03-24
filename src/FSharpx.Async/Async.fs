@@ -159,3 +159,14 @@ module AsyncExtensions =
             else tcs.SetCanceled()
           Async.StartWithContinuations(a, ok, err, cnc)
           Async.StartWithContinuations(b, ok, err, cnc)
+
+      /// Returns an async computation which waits for the given task to complete.
+      static member AwaitTask (t:Task) =        
+        Async.FromContinuations <| fun (ok,err,cnc) ->
+          t.ContinueWith(fun t ->
+            if t.IsFaulted then err(t.Exception)
+            elif t.IsCanceled then cnc(OperationCanceledException("Task wrapped with Async.AwaitTask has been cancelled.",  t.Exception))          
+            elif t.IsCompleted then ok()
+            else failwith "invalid Task state!"
+          )
+          |> ignore
