@@ -159,3 +159,8 @@ module AsyncExtensions =
             else tcs.SetCanceled()
           Async.StartWithContinuations(a, ok, err, cnc)
           Async.StartWithContinuations(b, ok, err, cnc)
+
+      /// Creates an async computation which runs the argument computation but 
+      /// raises a System.TimoutException if it doesn't complete in the specified period.
+      static member timeout (timeoutMs:int) (c:Async<'a>) =
+        Async.StartChild(c, timeoutMs) |> Async.bind id

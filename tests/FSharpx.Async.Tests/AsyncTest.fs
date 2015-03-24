@@ -44,3 +44,10 @@ let ``Async.ParallelIgnore should cancel upon first cancellation``() =
   )
   |> ignore
     
+[<Test>]
+let ``Async.timout should time out``() =  
+  let c = Async.Sleep 50    
+  Assert.Throws<TimeoutException>(fun() -> 
+    c |> Async.timeout 5 |> Async.RunSynchronously
+  )
+  |> ignore
